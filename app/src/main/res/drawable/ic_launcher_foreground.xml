@@ -4,7 +4,39 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M36,36h36v36h-36z" />
+    <group
+        android:pivotX="54"
+        android:pivotY="54">
+        
+        <!-- Outer Circle Ring -->
+        <path
+            android:fillColor="#00000000"
+            android:strokeColor="#EC5B2A"
+            android:strokeWidth="2.2"
+            android:pathData="M 54,21 A 33,33 0 1,1 53.99,21 Z" />
+
+        <!-- Inner Circle Ring -->
+        <path
+            android:fillColor="#00000000"
+            android:strokeColor="#EC5B2A"
+            android:strokeWidth="2.2"
+            android:pathData="M 54,25.5 A 28.5,28.5 0 1,1 53.99,25.5 Z" />
+
+        <!-- NA Monogram Central Structure -->
+        <!-- N Left Arc/Leg -->
+        <path
+            android:fillColor="#EC5B2A"
+            android:pathData="M 31,73.5 C 26,67 23,59 23,50 C 23,39 29,29 38,24 L 38,30 C 31,34 27,42 27,50 C 27,57 29.5,63.5 33.5,69 Z" />
+
+        <!-- N Center Spike & Diagonal -->
+        <path
+            android:fillColor="#EC5B2A"
+            android:pathData="M 44,79 L 37,25 L 43,25 L 53,70 L 53,25 L 59,25 L 59,73.5 L 53,73.5 L 44,28 L 44,79 Z" />
+
+        <!-- A Right Arch & Crossbar -->
+        <path
+            android:fillColor="#EC5B2A"
+            android:pathData="M 53,20.5 L 61,20.5 C 70,22 78,30 80,41 C 82,51 79,62 71,73.5 L 66,69.5 C 72.5,60 75,51 73,43 C 71.5,36 65.5,30 59,29 L 59,45 L 80,45 L 80,51 L 59,51 L 59,73.5 L 53,73.5 Z" />
+            
+    </group>
 </vector>
