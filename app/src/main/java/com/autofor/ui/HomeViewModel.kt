@@ -27,7 +27,6 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
     init {
-        loadData()
         scheduleManager.checkAndSyncActiveState()
         loadData()
     }

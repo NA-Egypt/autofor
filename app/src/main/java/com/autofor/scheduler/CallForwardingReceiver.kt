@@ -64,8 +64,8 @@ class CallForwardingReceiver : BroadcastReceiver() {
         } catch (e: Exception) {
             // Android 10+ background activity launch restriction or generic error fallback
             val errorText = "Forwarding trigger ready: $mmiCode. Tap notification action to complete dial."
-            repository.setLastForwardingStatus(statusText)
-            sendNotification(context, "AutoFor Scheduled Forwarding", statusText, callIntent)
+            repository.setLastForwardingStatus(errorText)
+            sendNotification(context, "AutoFor Scheduled Forwarding", errorText, callIntent)
         }
     }
 

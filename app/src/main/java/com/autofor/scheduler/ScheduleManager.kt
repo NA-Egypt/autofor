@@ -114,10 +114,13 @@ class ScheduleManager(private val context: Context) {
             )
             pendingStart?.let { alarmManager.cancel(it) }
 
+            val endIntent = Intent(context, CallForwardingReceiver::class.java).apply {
+                action = ACTION_TRIGGER_FORWARDING
+            }
             val pendingEnd = PendingIntent.getBroadcast(
                 context,
                 (rule.id + "_end").hashCode(),
-                startIntent,
+                endIntent,
                 PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
             )
             pendingEnd?.let { alarmManager.cancel(it) }
