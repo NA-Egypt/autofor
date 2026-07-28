@@ -4,12 +4,12 @@
         "source": "com.autofor.app-main-46:/mipmap-xxhdpi/ic_launcher.png"
     },
     {
-        "merged": "/Users/hani/.gradle/daemon/9.6.1/com.autofor.app-debug-44:/drawable_ic_launcher_background.xml.flat",
-        "source": "/Users/hani/.gradle/daemon/9.6.1/com.autofor.app-main-46:/drawable/ic_launcher_background.xml"
+        "merged": "com.autofor.app-debug-44:/drawable_ic_launcher_foreground.xml.flat",
+        "source": "com.autofor.app-main-46:/drawable/ic_launcher_foreground.xml"
     },
     {
-        "merged": "/Users/hani/.gradle/daemon/9.6.1/com.autofor.app-debug-44:/xml_data_extraction_rules.xml.flat",
-        "source": "/Users/hani/.gradle/daemon/9.6.1/com.autofor.app-main-46:/xml/data_extraction_rules.xml"
+        "merged": "com.autofor.app-debug-44:/xml_backup_rules.xml.flat",
+        "source": "com.autofor.app-main-46:/xml/backup_rules.xml"
     },
     {
         "merged": "com.autofor.app-debug-44:/mipmap-xxxhdpi_ic_launcher.png.flat",
@@ -24,16 +24,20 @@
         "source": "com.autofor.app-main-46:/mipmap-xhdpi/ic_launcher_round.png"
     },
     {
-        "merged": "/Users/hani/.gradle/daemon/9.6.1/com.autofor.app-debug-44:/drawable_ic_launcher_foreground.xml.flat",
-        "source": "/Users/hani/.gradle/daemon/9.6.1/com.autofor.app-main-46:/drawable/ic_launcher_foreground.xml"
+        "merged": "com.autofor.app-debug-44:/mipmap-anydpi-v26_ic_launcher_round.xml.flat",
+        "source": "com.autofor.app-main-46:/mipmap-anydpi-v26/ic_launcher_round.xml"
     },
     {
-        "merged": "/Users/hani/.gradle/daemon/9.6.1/com.autofor.app-debug-44:/xml_backup_rules.xml.flat",
-        "source": "/Users/hani/.gradle/daemon/9.6.1/com.autofor.app-main-46:/xml/backup_rules.xml"
+        "merged": "com.autofor.app-debug-44:/xml_data_extraction_rules.xml.flat",
+        "source": "com.autofor.app-main-46:/xml/data_extraction_rules.xml"
     },
     {
         "merged": "com.autofor.app-debug-44:/mipmap-xhdpi_ic_launcher.png.flat",
         "source": "com.autofor.app-main-46:/mipmap-xhdpi/ic_launcher.png"
+    },
+    {
+        "merged": "com.autofor.app-debug-44:/drawable_ic_launcher_background.xml.flat",
+        "source": "com.autofor.app-main-46:/drawable/ic_launcher_background.xml"
     },
     {
         "merged": "com.autofor.app-debug-44:/mipmap-mdpi_ic_launcher_round.png.flat",
@@ -44,20 +48,16 @@
         "source": "com.autofor.app-main-46:/drawable/ic_logo.png"
     },
     {
-        "merged": "/Users/hani/.gradle/daemon/9.6.1/com.autofor.app-debug-44:/mipmap-anydpi-v26_ic_launcher.xml.flat",
-        "source": "/Users/hani/.gradle/daemon/9.6.1/com.autofor.app-main-46:/mipmap-anydpi-v26/ic_launcher.xml"
-    },
-    {
         "merged": "com.autofor.app-debug-44:/mipmap-hdpi_ic_launcher.png.flat",
         "source": "com.autofor.app-main-46:/mipmap-hdpi/ic_launcher.png"
     },
     {
-        "merged": "/Users/hani/.gradle/daemon/9.6.1/com.autofor.app-debug-44:/mipmap-anydpi-v26_ic_launcher_round.xml.flat",
-        "source": "/Users/hani/.gradle/daemon/9.6.1/com.autofor.app-main-46:/mipmap-anydpi-v26/ic_launcher_round.xml"
-    },
-    {
         "merged": "com.autofor.app-debug-44:/mipmap-xxxhdpi_ic_launcher_round.png.flat",
         "source": "com.autofor.app-main-46:/mipmap-xxxhdpi/ic_launcher_round.png"
+    },
+    {
+        "merged": "com.autofor.app-debug-44:/mipmap-anydpi-v26_ic_launcher.xml.flat",
+        "source": "com.autofor.app-main-46:/mipmap-anydpi-v26/ic_launcher.xml"
     },
     {
         "merged": "com.autofor.app-debug-44:/mipmap-xxhdpi_ic_launcher_round.png.flat",
