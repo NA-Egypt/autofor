@@ -126,4 +126,25 @@ class ScheduleCalculatorTest {
         assertEquals(0, resultCal.get(Calendar.MINUTE))
         assertEquals(Calendar.MONDAY, resultCal.get(Calendar.DAY_OF_WEEK))
     }
+
+    @Test
+    fun testSaturdayRuleActiveAndTrigger() {
+        val rule = ForwardingRule(
+            startHour = 9,
+            startMinute = 0,
+            endHour = 17,
+            endMinute = 0,
+            daysOfWeek = setOf(Calendar.SATURDAY),
+            isEnabled = true
+        )
+
+        val cal = Calendar.getInstance().apply {
+            set(Calendar.DAY_OF_WEEK, Calendar.SATURDAY)
+            set(Calendar.HOUR_OF_DAY, 11)
+            set(Calendar.MINUTE, 0)
+        }
+
+        assertTrue(ScheduleCalculator.isRuleCurrentlyActive(rule, cal.timeInMillis))
+        assertEquals("Sat", rule.formatDays())
+    }
 }

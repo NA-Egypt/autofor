@@ -56,13 +56,14 @@ class ScheduleManager(private val context: Context) {
         val nextEnd = ScheduleCalculator.calculateNextTriggerMillis(rule, rule.endHour, rule.endMinute)
 
         if (nextStart != null) {
-            val startIntent = Intent(context, CallForwardingReceiver::class.java).apply {
+            val startIntent = Intent(context, ForwardingActivity::class.java).apply {
                 action = ACTION_TRIGGER_FORWARDING
                 putExtra(EXTRA_ENABLE_FORWARDING, true)
                 putExtra(EXTRA_RULE_ID, rule.id)
                 putExtra(EXTRA_PHONE_NUMBER, rule.targetPhoneNumber)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             }
-            val pendingStart = PendingIntent.getBroadcast(
+            val pendingStart = PendingIntent.getActivity(
                 context,
                 (rule.id + "_start").hashCode(),
                 startIntent,
@@ -72,13 +73,14 @@ class ScheduleManager(private val context: Context) {
         }
 
         if (nextEnd != null) {
-            val endIntent = Intent(context, CallForwardingReceiver::class.java).apply {
+            val endIntent = Intent(context, ForwardingActivity::class.java).apply {
                 action = ACTION_TRIGGER_FORWARDING
                 putExtra(EXTRA_ENABLE_FORWARDING, false)
                 putExtra(EXTRA_RULE_ID, rule.id)
                 putExtra(EXTRA_PHONE_NUMBER, rule.targetPhoneNumber)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             }
-            val pendingEnd = PendingIntent.getBroadcast(
+            val pendingEnd = PendingIntent.getActivity(
                 context,
                 (rule.id + "_end").hashCode(),
                 endIntent,
@@ -103,10 +105,10 @@ class ScheduleManager(private val context: Context) {
     fun cancelAllAlarms() {
         val rules = repository.getRules()
         for (rule in rules) {
-            val startIntent = Intent(context, CallForwardingReceiver::class.java).apply {
+            val startIntent = Intent(context, ForwardingActivity::class.java).apply {
                 action = ACTION_TRIGGER_FORWARDING
             }
-            val pendingStart = PendingIntent.getBroadcast(
+            val pendingStart = PendingIntent.getActivity(
                 context,
                 (rule.id + "_start").hashCode(),
                 startIntent,
@@ -114,10 +116,10 @@ class ScheduleManager(private val context: Context) {
             )
             pendingStart?.let { alarmManager.cancel(it) }
 
-            val endIntent = Intent(context, CallForwardingReceiver::class.java).apply {
+            val endIntent = Intent(context, ForwardingActivity::class.java).apply {
                 action = ACTION_TRIGGER_FORWARDING
             }
-            val pendingEnd = PendingIntent.getBroadcast(
+            val pendingEnd = PendingIntent.getActivity(
                 context,
                 (rule.id + "_end").hashCode(),
                 endIntent,

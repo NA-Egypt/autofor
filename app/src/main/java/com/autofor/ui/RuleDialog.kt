@@ -10,7 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.autofor.data.ForwardingRule
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun RuleDialog(
     initialRule: ForwardingRule? = null,
@@ -60,9 +60,10 @@ fun RuleDialog(
                 )
 
                 Text("Repeat Days", style = MaterialTheme.typography.labelLarge)
-                Row(
+                FlowRow(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     daysMap.forEach { (dayInt, label) ->
                         val isSelected = selectedDays.contains(dayInt)

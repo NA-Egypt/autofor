@@ -23,10 +23,17 @@ class CallForwardingReceiver : BroadcastReceiver() {
             val enable = intent.getBooleanExtra(ScheduleManager.EXTRA_ENABLE_FORWARDING, false)
             val phoneNumber = intent.getStringExtra(ScheduleManager.EXTRA_PHONE_NUMBER) ?: ""
 
-            executeCallForwarding(context, enable, phoneNumber)
+            val serviceIntent = Intent(context, ForwardingExecutionService::class.java).apply {
+                action = ScheduleManager.ACTION_TRIGGER_FORWARDING
+                putExtra(ScheduleManager.EXTRA_ENABLE_FORWARDING, enable)
+                putExtra(ScheduleManager.EXTRA_PHONE_NUMBER, phoneNumber)
+            }
 
-            // Reschedule next occurrences
-            ScheduleManager(context).rescheduleAll()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(serviceIntent)
+            } else {
+                context.startService(serviceIntent)
+            }
         }
     }
 
