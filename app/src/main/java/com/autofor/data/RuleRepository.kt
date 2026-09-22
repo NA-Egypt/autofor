@@ -56,4 +56,20 @@ class RuleRepository(context: Context) {
     fun setLastForwardingStatus(status: String) {
         prefs.edit().putString("last_status", status).apply()
     }
+
+    fun getLastExecutionTime(): Long {
+        return prefs.getLong("last_execution_time", 0L)
+    }
+
+    fun setLastExecutionTime(time: Long) {
+        prefs.edit().putLong("last_execution_time", time).apply()
+    }
+
+    fun getLastForwardingError(): String? {
+        return prefs.getString("last_error", null)
+    }
+
+    fun setLastForwardingError(error: String?) {
+        prefs.edit().putString("last_error", error).apply()
+    }
 }

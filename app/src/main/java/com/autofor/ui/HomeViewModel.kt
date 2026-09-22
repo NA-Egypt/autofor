@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.autofor.data.ForwardingRule
 import com.autofor.data.RuleRepository
 import com.autofor.scheduler.ScheduleManager
+import com.autofor.util.DeviceHealthChecker
+import com.autofor.util.DeviceHealthStatus
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -14,6 +16,15 @@ import kotlinx.coroutines.launch
 data class HomeUiState(
     val isGlobalEnabled: Boolean = true,
     val lastStatus: String = "Inactive (Forwarding OFF)",
+    val lastError: String? = null,
+    val lastExecutionTime: Long = 0L,
+    val healthStatus: DeviceHealthStatus = DeviceHealthStatus(
+        hasCallPhone = false,
+        hasNotification = false,
+        hasExactAlarm = false,
+        isIgnoringBatteryOptimizations = false,
+        canDrawOverlays = false
+    ),
     val rules: List<ForwardingRule> = emptyList(),
     val isLoading: Boolean = false
 )
@@ -33,9 +44,14 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     fun loadData() {
         viewModelScope.launch {
+            val context = getApplication<Application>()
+            val health = DeviceHealthChecker.checkHealth(context)
             _uiState.value = HomeUiState(
                 isGlobalEnabled = repository.isGlobalEnabled(),
                 lastStatus = repository.getLastForwardingStatus(),
+                lastError = repository.getLastForwardingError(),
+                lastExecutionTime = repository.getLastExecutionTime(),
+                healthStatus = health,
                 rules = repository.getRules()
             )
         }
@@ -72,6 +88,12 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateStatus(status: String) {
         repository.setLastForwardingStatus(status)
+        repository.setLastExecutionTime(System.currentTimeMillis())
+        loadData()
+    }
+
+    fun clearError() {
+        repository.setLastForwardingError(null)
         loadData()
     }
 }
