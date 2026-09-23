@@ -1,6 +1,9 @@
 package com.autofor.service
 
 import android.accessibilityservice.AccessibilityService
+import android.content.Context
+import android.content.Intent
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -13,8 +16,34 @@ class AutoForAccessibilityService : AccessibilityService() {
 
     companion object {
         private const val TAG = "AutoForAccessibility"
+        const val EXTRA_WAS_LOCKED = "extra_was_locked"
+
+        var instance: AutoForAccessibilityService? = null
+            private set
+
         var isServiceRunning: Boolean = false
             private set
+
+        @Volatile
+        var lastWasLocked: Boolean = false
+
+        fun triggerForwarding(context: Context, enable: Boolean, phoneNumber: String, wasLocked: Boolean) {
+            lastWasLocked = wasLocked
+            val activityIntent = Intent(context, com.autofor.scheduler.ForwardingActivity::class.java).apply {
+                action = com.autofor.scheduler.ScheduleManager.ACTION_TRIGGER_FORWARDING
+                putExtra(com.autofor.scheduler.ScheduleManager.EXTRA_ENABLE_FORWARDING, enable)
+                putExtra(com.autofor.scheduler.ScheduleManager.EXTRA_PHONE_NUMBER, phoneNumber)
+                putExtra(EXTRA_WAS_LOCKED, wasLocked)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            }
+
+            val svc = instance
+            if (svc != null) {
+                svc.startActivity(activityIntent)
+            } else {
+                context.startActivity(activityIntent)
+            }
+        }
 
         private val MMI_KEYWORDS = listOf(
             "call forwarding",
@@ -40,6 +69,7 @@ class AutoForAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        instance = this
         isServiceRunning = true
         Log.d(TAG, "AutoForAccessibilityService connected and ready")
     }
@@ -85,10 +115,15 @@ class AutoForAccessibilityService : AccessibilityService() {
             if (clicked || containsMmiKeyword) {
                 repository.setAwaitingMmi(false)
 
-                // Return to home after brief delay to allow system click to process
+                // Return to home or re-lock screen after brief delay to allow system click to process
                 handler.postDelayed({
-                    performGlobalAction(GLOBAL_ACTION_HOME)
-                }, 300L)
+                    if (lastWasLocked && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN)
+                    } else {
+                        performGlobalAction(GLOBAL_ACTION_HOME)
+                    }
+                    lastWasLocked = false
+                }, 500L)
             }
         }
     }
@@ -162,6 +197,7 @@ class AutoForAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        if (instance == this) instance = null
         isServiceRunning = false
         Log.d(TAG, "AutoForAccessibilityService destroyed")
     }

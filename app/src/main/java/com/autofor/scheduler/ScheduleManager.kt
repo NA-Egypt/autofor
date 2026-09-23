@@ -18,6 +18,7 @@ class ScheduleManager(private val context: Context) {
         const val EXTRA_ENABLE_FORWARDING = "extra_enable_forwarding"
         const val EXTRA_RULE_ID = "extra_rule_id"
         const val EXTRA_PHONE_NUMBER = "extra_phone_number"
+        const val EXTRA_IS_RETRY = "extra_is_retry"
     }
 
     fun rescheduleAll() {
@@ -88,15 +89,47 @@ class ScheduleManager(private val context: Context) {
         }
     }
 
+    fun scheduleRetry(enable: Boolean, ruleId: String, phoneNumber: String, delayMinutes: Long = 2) {
+        val triggerAtMillis = System.currentTimeMillis() + (delayMinutes * 60 * 1000L)
+        val retryIntent = Intent(context, CallForwardingReceiver::class.java).apply {
+            action = ACTION_TRIGGER_FORWARDING
+            putExtra(EXTRA_ENABLE_FORWARDING, enable)
+            putExtra(EXTRA_RULE_ID, ruleId)
+            putExtra(EXTRA_PHONE_NUMBER, phoneNumber)
+            putExtra(EXTRA_IS_RETRY, true)
+        }
+        val pendingRetry = PendingIntent.getBroadcast(
+            context,
+            (ruleId + "_retry").hashCode(),
+            retryIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        setAlarm(triggerAtMillis, pendingRetry)
+    }
+
     private fun setAlarm(triggerAtMillis: Long, pendingIntent: PendingIntent) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            if (alarmManager.canScheduleExactAlarms()) {
-                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
-            } else {
-                alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
+        try {
+            val showIntent = Intent(context, com.autofor.ui.MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             }
-        } else {
-            alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
+            val showPendingIntent = PendingIntent.getActivity(
+                context,
+                1000,
+                showIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val alarmClockInfo = AlarmManager.AlarmClockInfo(triggerAtMillis, showPendingIntent)
+            alarmManager.setAlarmClock(alarmClockInfo, pendingIntent)
+        } catch (e: Exception) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                if (alarmManager.canScheduleExactAlarms()) {
+                    alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
+                } else {
+                    alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
+                }
+            } else {
+                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
+            }
         }
     }
 

@@ -331,8 +331,8 @@ fun HomeScreen(
                                 )
 
                                 PermissionHealthItem(
-                                    title = "Auto-Dismiss Dialogs (Accessibility)",
-                                    description = "Silently dismisses carrier MMI popups and returns to home",
+                                    title = "Locked/Unlocked Automation (Accessibility)",
+                                    description = "Enables 100% automated scheduled forwarding while phone is locked or unlocked, auto-dismissing carrier dialogs and re-locking screen",
                                     isGranted = healthStatus.isAccessibilityEnabled,
                                     onFix = onRequestAccessibilityPermission
                                 )

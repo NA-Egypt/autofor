@@ -1,5 +1,6 @@
 package com.autofor.scheduler
 
+import android.app.KeyguardManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -17,6 +18,7 @@ import android.telephony.TelephonyManager
 import androidx.core.app.NotificationCompat
 import com.autofor.R
 import com.autofor.data.RuleRepository
+import com.autofor.service.AutoForAccessibilityService
 import com.autofor.ui.MainActivity
 import com.autofor.util.DeviceHealthChecker
 
@@ -42,15 +44,28 @@ class CallForwardingReceiver : BroadcastReceiver() {
 
         val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
         val wakeLock = powerManager?.newWakeLock(
-            PowerManager.PARTIAL_WAKE_LOCK,
+            PowerManager.PARTIAL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
             "AutoFor:TriggerWakeLock"
         )
-        wakeLock?.acquire(15000L) // Keep CPU awake for up to 15s
+        wakeLock?.acquire(20000L) // Keep CPU awake for up to 20s
+
+        @Suppress("DEPRECATION")
+        val screenLock = powerManager?.newWakeLock(
+            PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP or PowerManager.ON_AFTER_RELEASE,
+            "AutoFor:ScreenWake"
+        )
+        screenLock?.acquire(8000L)
+
+        val isRetry = intent.getBooleanExtra(ScheduleManager.EXTRA_IS_RETRY, false)
 
         try {
             val enable = intent.getBooleanExtra(ScheduleManager.EXTRA_ENABLE_FORWARDING, false)
             val phoneNumber = intent.getStringExtra(ScheduleManager.EXTRA_PHONE_NUMBER) ?: ""
+            val ruleId = intent.getStringExtra(ScheduleManager.EXTRA_RULE_ID) ?: ""
             val repository = RuleRepository(context)
+
+            val keyguardManager = context.getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
+            val isLocked = keyguardManager?.isKeyguardLocked ?: false
 
             // Step 1: Validate CALL_PHONE permission
             if (!DeviceHealthChecker.hasCallPhonePermission(context)) {
@@ -73,11 +88,13 @@ class CallForwardingReceiver : BroadcastReceiver() {
             val actionLabel = if (enable) "Forwarding to $phoneNumber" else "Forwarding Cancellation"
 
             // Step 2: Attempt execution
-            executeTrigger(context, enable, phoneNumber, mmiCode, actionLabel, repository)
+            executeTrigger(context, enable, phoneNumber, ruleId, mmiCode, actionLabel, isLocked, isRetry, repository)
 
         } finally {
-            // Always reschedule next occurrences
-            ScheduleManager(context).rescheduleAll()
+            // Always reschedule next occurrences if this wasn't a temporary retry
+            if (!isRetry) {
+                ScheduleManager(context).rescheduleAll()
+            }
 
             if (wakeLock != null && wakeLock.isHeld) {
                 wakeLock.release()
@@ -89,74 +106,37 @@ class CallForwardingReceiver : BroadcastReceiver() {
         context: Context,
         enable: Boolean,
         phoneNumber: String,
+        ruleId: String,
         mmiCode: String,
         actionLabel: String,
+        isLocked: Boolean,
+        isRetry: Boolean,
         repository: RuleRepository
     ) {
-        val telephonyManager = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
-        var directSucceeded = false
-
-        // Attempt 1: Direct activity launch if screen is on or overlay permission is granted
-        val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
-        val isScreenOn = powerManager?.isInteractive ?: false
-        val hasOverlayPermission = Settings.canDrawOverlays(context)
-
-        if (isScreenOn || hasOverlayPermission) {
+        // Attempt 1: Delegate execution through AutoForAccessibilityService (exempt from Background Activity Restrictions)
+        if (AutoForAccessibilityService.isServiceRunning) {
             try {
-                val activityIntent = Intent(context, ForwardingActivity::class.java).apply {
-                    action = ScheduleManager.ACTION_TRIGGER_FORWARDING
-                    putExtra(ScheduleManager.EXTRA_ENABLE_FORWARDING, enable)
-                    putExtra(ScheduleManager.EXTRA_PHONE_NUMBER, phoneNumber)
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                }
-                context.startActivity(activityIntent)
-                directSucceeded = true
-                repository.setLastForwardingStatus("Triggered $actionLabel ($mmiCode)")
+                AutoForAccessibilityService.triggerForwarding(context, enable, phoneNumber, isLocked)
+                val lockStatus = if (isLocked) " (Over Lockscreen)" else ""
+                repository.setLastForwardingStatus("Automated trigger$lockStatus: $actionLabel ($mmiCode)")
                 repository.setLastForwardingError(null)
                 repository.setLastExecutionTime(System.currentTimeMillis())
                 return
             } catch (e: Exception) {
-                directSucceeded = false
+                // If service invocation failed, fall through to notification fallback
             }
         }
 
-        // Attempt 2: Try silent TelephonyManager.sendUssdRequest if supported
-        if (!directSucceeded && telephonyManager != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            try {
-                telephonyManager.sendUssdRequest(
-                    mmiCode,
-                    object : TelephonyManager.UssdResponseCallback() {
-                        override fun onReceiveUssdResponse(
-                            telephonyManager: TelephonyManager?,
-                            request: String?,
-                            response: CharSequence?
-                        ) {
-                            val msg = "Auto-forwarded: $actionLabel ($mmiCode). Carrier response: $response"
-                            repository.setLastForwardingStatus(msg)
-                            repository.setLastForwardingError(null)
-                            repository.setLastExecutionTime(System.currentTimeMillis())
-                            sendInfoNotification(context, "AutoFor Forwarding Completed", msg)
-                        }
-
-                        override fun onReceiveUssdResponseFailed(
-                            telephonyManager: TelephonyManager?,
-                            request: String?,
-                            failureCode: Int
-                        ) {
-                            // Carrier or device rejected silent USSD request; fallback to full-screen alert
-                            postUrgentPromptNotification(context, enable, phoneNumber, mmiCode, actionLabel, repository)
-                        }
-                    },
-                    Handler(Looper.getMainLooper())
-                )
-                return
-            } catch (e: Exception) {
-                // If sendUssdRequest fails or throws SecurityException, fallback to full-screen prompt
-            }
-        }
-
-        // Attempt 3: Fail-safe Full-Screen Heads-Up Alarm Notification
+        // Attempt 2: Fallback when accessibility service is inactive or disabled:
+        // 1. Post urgent full-screen notification with 1-tap dial
         postUrgentPromptNotification(context, enable, phoneNumber, mmiCode, actionLabel, repository)
+
+        // 2. Schedule automatic retry in 2 minutes if this wasn't already a retry
+        if (!isRetry && ruleId.isNotBlank()) {
+            ScheduleManager(context).scheduleRetry(enable, ruleId, phoneNumber, delayMinutes = 2)
+            val retryMsg = "Accessibility Service inactive. Prompted notification & scheduled auto-retry in 2m for $actionLabel."
+            repository.setLastForwardingStatus(retryMsg)
+        }
     }
 
     private fun postUrgentPromptNotification(

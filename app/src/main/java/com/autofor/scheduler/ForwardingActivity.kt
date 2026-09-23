@@ -31,11 +31,17 @@ class ForwardingActivity : Activity() {
         @Suppress("DEPRECATION")
         window.addFlags(
             WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+            WindowManager.LayoutParams.FLAG_ALLOW_LOCK_WHILE_SCREEN_ON or
             WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
         )
 
         val keyguardManager = getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
         keyguardManager?.requestDismissKeyguard(this, null)
+
+        val wasLocked = intent.getBooleanExtra(com.autofor.service.AutoForAccessibilityService.EXTRA_WAS_LOCKED, false)
+        if (wasLocked) {
+            com.autofor.service.AutoForAccessibilityService.lastWasLocked = true
+        }
 
         // Cancel any pending alarm heads-up notification
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
