@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.autofor.data.ForwardingRuleTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-09-22T09:22:49.322Z" hostname="veee.local" time="0.037">
+<testsuite name="com.autofor.data.ForwardingRuleTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-09-23T00:04:03.471Z" hostname="veee.local" time="0.022">
   <properties/>
-  <testcase name="testFormatDays_CustomDays" classname="com.autofor.data.ForwardingRuleTest" time="0.028"/>
+  <testcase name="testFormatDays_CustomDays" classname="com.autofor.data.ForwardingRuleTest" time="0.017"/>
   <testcase name="testFormatDays_EveryDay" classname="com.autofor.data.ForwardingRuleTest" time="0.0"/>
-  <testcase name="testFormatTimeRange" classname="com.autofor.data.ForwardingRuleTest" time="0.006"/>
+  <testcase name="testFormatTimeRange" classname="com.autofor.data.ForwardingRuleTest" time="0.004"/>
   <testcase name="testFormatDays_Weekdays" classname="com.autofor.data.ForwardingRuleTest" time="0.0"/>
   <testcase name="testFormatDays_Weekends" classname="com.autofor.data.ForwardingRuleTest" time="0.0"/>
   <system-out><![CDATA[]]></system-out>

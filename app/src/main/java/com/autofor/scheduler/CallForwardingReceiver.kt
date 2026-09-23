@@ -69,7 +69,7 @@ class CallForwardingReceiver : BroadcastReceiver() {
             }
 
             val cleanNumber = phoneNumber.replace(Regex("[^0-9+]"), "")
-            val mmiCode = if (enable) "*21*$cleanNumber#" else "#21#"
+            val mmiCode = if (enable) "**21*$cleanNumber#" else "##21#"
             val actionLabel = if (enable) "Forwarding to $phoneNumber" else "Forwarding Cancellation"
 
             // Step 2: Attempt execution

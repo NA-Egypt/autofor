@@ -41,11 +41,13 @@ fun HomeScreen(
     onToggleRule: (ForwardingRule, Boolean) -> Unit,
     onManualForwardClick: (phoneNumber: String) -> Unit,
     onManualCancelClick: () -> Unit,
+    onCheckStatusClick: () -> Unit,
     onRequestPhonePermission: () -> Unit,
     onRequestExactAlarm: () -> Unit,
     onRequestBatteryOptimization: () -> Unit,
     onRequestOverlayPermission: () -> Unit,
     onRequestNotificationPermission: () -> Unit,
+    onRequestAccessibilityPermission: () -> Unit,
     onDismissError: () -> Unit,
     showTroubleshootingInitially: Boolean = false
 ) {
@@ -207,6 +209,18 @@ fun HomeScreen(
                                 Text("Current Status", style = MaterialTheme.typography.labelSmall)
                                 Text(lastStatus, style = MaterialTheme.typography.bodyMedium)
                             }
+                            FilledTonalButton(
+                                onClick = onCheckStatusClick,
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Refresh,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Text("Check", style = MaterialTheme.typography.labelSmall)
+                            }
                         }
                     }
                 }
@@ -315,6 +329,13 @@ fun HomeScreen(
                                     isGranted = healthStatus.hasNotification,
                                     onFix = onRequestNotificationPermission
                                 )
+
+                                PermissionHealthItem(
+                                    title = "Auto-Dismiss Dialogs (Accessibility)",
+                                    description = "Silently dismisses carrier MMI popups and returns to home",
+                                    isGranted = healthStatus.isAccessibilityEnabled,
+                                    onFix = onRequestAccessibilityPermission
+                                )
                             }
                         }
                     }
@@ -323,23 +344,33 @@ fun HomeScreen(
 
             // Quick Manual Controls
             item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Button(
-                        onClick = { showManualForwardDialog = true },
-                        modifier = Modifier.weight(1f)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Icon(Icons.Default.Call, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Forward Now")
+                        Button(
+                            onClick = { showManualForwardDialog = true },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.Call, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Forward Now")
+                        }
+                        OutlinedButton(
+                            onClick = onManualCancelClick,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Cancel Forwarding")
+                        }
                     }
                     OutlinedButton(
-                        onClick = onManualCancelClick,
-                        modifier = Modifier.weight(1f)
+                        onClick = onCheckStatusClick,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("Cancel Forwarding")
+                        Icon(Icons.Default.Refresh, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Check Carrier Status (*#21#)")
                     }
                 }
             }
@@ -531,6 +562,16 @@ fun HomeScreen(
                     item {
                         TroubleshootingStep(
                             number = "4",
+                            title = "Auto-Dismiss Dialogs (Accessibility Service)",
+                            detail = "Enable AutoFor in Accessibility settings to allow it to automatically confirm carrier MMI prompts and return home completely silently.",
+                            actionLabel = "Open Accessibility Settings",
+                            onAction = onRequestAccessibilityPermission
+                        )
+                    }
+
+                    item {
+                        TroubleshootingStep(
+                            number = "5",
                             title = "Default Voice SIM",
                             detail = "If your phone has Dual SIMs, ensure a Default SIM is configured for calls under Android SIM settings so dialing doesn't get stuck on a prompt."
                         )
@@ -538,9 +579,9 @@ fun HomeScreen(
 
                     item {
                         TroubleshootingStep(
-                            number = "5",
-                            title = "Carrier MMI Code Support",
-                            detail = "Test dialing *21*<number># directly from your phone app to confirm your carrier supports GSM unconditional call forwarding."
+                            number = "6",
+                            title = "Standard 3GPP GSM MMI Codes",
+                            detail = "AutoFor dials **21*<number># to register & activate, ##21# to cancel & erase, and *#21# to check status. You can tap 'Check Carrier Status' anytime to verify."
                         )
                     }
                 }

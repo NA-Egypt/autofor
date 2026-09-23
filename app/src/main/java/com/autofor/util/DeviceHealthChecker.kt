@@ -2,6 +2,7 @@ package com.autofor.util
 
 import android.Manifest
 import android.app.AlarmManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -9,18 +10,21 @@ import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
+import android.text.TextUtils
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import com.autofor.service.AutoForAccessibilityService
 
 data class DeviceHealthStatus(
     val hasCallPhone: Boolean,
     val hasNotification: Boolean,
     val hasExactAlarm: Boolean,
     val isIgnoringBatteryOptimizations: Boolean,
-    val canDrawOverlays: Boolean
+    val canDrawOverlays: Boolean,
+    val isAccessibilityEnabled: Boolean = false
 ) {
     val isFullyConfigured: Boolean
-        get() = hasCallPhone && hasNotification && hasExactAlarm && isIgnoringBatteryOptimizations && canDrawOverlays
+        get() = hasCallPhone && hasNotification && hasExactAlarm && isIgnoringBatteryOptimizations && canDrawOverlays && isAccessibilityEnabled
 
     val hasCriticalPermissions: Boolean
         get() = hasCallPhone && hasNotification && hasExactAlarm
@@ -34,7 +38,8 @@ object DeviceHealthChecker {
             hasNotification = hasNotificationPermission(context),
             hasExactAlarm = hasExactAlarmPermission(context),
             isIgnoringBatteryOptimizations = isIgnoringBatteryOptimizations(context),
-            canDrawOverlays = canDrawOverlays(context)
+            canDrawOverlays = canDrawOverlays(context),
+            isAccessibilityEnabled = isAccessibilityServiceEnabled(context)
         )
     }
 
@@ -110,5 +115,29 @@ object DeviceHealthChecker {
         } else {
             createAppSettingsIntent(packageName)
         }
+    }
+
+    fun isAccessibilityServiceEnabled(context: Context): Boolean {
+        if (AutoForAccessibilityService.isServiceRunning) return true
+        val expectedComponentName = ComponentName(context, AutoForAccessibilityService::class.java).flattenToString()
+        val enabledServicesSetting = Settings.Secure.getString(
+            context.contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ) ?: return false
+        val colonSplitter = TextUtils.SimpleStringSplitter(':')
+        colonSplitter.setString(enabledServicesSetting)
+        while (colonSplitter.hasNext()) {
+            val componentName = colonSplitter.next()
+            if (componentName.equals(expectedComponentName, ignoreCase = true) ||
+                (componentName.contains(context.packageName) && componentName.contains("AutoForAccessibilityService"))
+            ) {
+                return true
+            }
+        }
+        return false
+    }
+
+    fun createAccessibilitySettingsIntent(): Intent {
+        return Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
     }
 }

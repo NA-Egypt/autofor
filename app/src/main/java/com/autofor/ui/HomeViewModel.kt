@@ -23,7 +23,8 @@ data class HomeUiState(
         hasNotification = false,
         hasExactAlarm = false,
         isIgnoringBatteryOptimizations = false,
-        canDrawOverlays = false
+        canDrawOverlays = false,
+        isAccessibilityEnabled = false
     ),
     val rules: List<ForwardingRule> = emptyList(),
     val isLoading: Boolean = false
@@ -94,6 +95,12 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     fun clearError() {
         repository.setLastForwardingError(null)
+        loadData()
+    }
+
+    fun checkCarrierStatus() {
+        val context = getApplication<Application>()
+        com.autofor.scheduler.ForwardingActivity.executeCheckStatus(context)
         loadData()
     }
 }

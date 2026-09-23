@@ -50,7 +50,7 @@ class ForwardingExecutionService : Service() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
 
-            val mmiCode = if (enable) "*21*${phoneNumber.replace(Regex("[^0-9+]"), "")}#" else "#21#"
+            val mmiCode = if (enable) "**21*${phoneNumber.replace(Regex("[^0-9+]"), "")}#" else "##21#"
             val statusText = if (enable) "Executing call forwarding to $phoneNumber ($mmiCode)" else "Deactivating call forwarding ($mmiCode)"
 
             val notification = NotificationCompat.Builder(this, CHANNEL_ID)

@@ -90,6 +90,9 @@ class MainActivity : ComponentActivity() {
                     onManualCancelClick = {
                         executeManualCancel()
                     },
+                    onCheckStatusClick = {
+                        viewModel.checkCarrierStatus()
+                    },
                     onRequestPhonePermission = {
                         requestPhonePermissionLauncher.launch(Manifest.permission.CALL_PHONE)
                     },
@@ -108,6 +111,9 @@ class MainActivity : ComponentActivity() {
                         } else {
                             launchSettingsIntentSafely(DeviceHealthChecker.createNotificationSettingsIntent(packageName))
                         }
+                    },
+                    onRequestAccessibilityPermission = {
+                        launchSettingsIntentSafely(DeviceHealthChecker.createAccessibilitySettingsIntent())
                     },
                     onDismissError = {
                         viewModel.clearError()
@@ -172,24 +178,12 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun executeManualForwarding(phoneNumber: String) {
-        val cleanNumber = phoneNumber.replace(Regex("[^0-9+]"), "")
-        val mmiCode = "*21*$cleanNumber#"
-        dialMmiCode(mmiCode, "Manual forwarding to $phoneNumber")
+        com.autofor.scheduler.ForwardingActivity.executeCallForwarding(this, true, phoneNumber)
+        viewModel.loadData()
     }
 
     private fun executeManualCancel() {
-        val mmiCode = "#21#"
-        dialMmiCode(mmiCode, "Manual call forwarding cancelled")
-    }
-
-    private fun dialMmiCode(mmiCode: String, statusMsg: String) {
-        val encodedCode = Uri.encode(mmiCode)
-        val intent = Intent(Intent.ACTION_CALL, Uri.parse("tel:$encodedCode"))
-        try {
-            startActivity(intent)
-            viewModel.updateStatus(statusMsg)
-        } catch (e: Exception) {
-            Toast.makeText(this, "Failed to execute $mmiCode: ${e.message}", Toast.LENGTH_SHORT).show()
-        }
+        com.autofor.scheduler.ForwardingActivity.executeCallForwarding(this, false, "")
+        viewModel.loadData()
     }
 }

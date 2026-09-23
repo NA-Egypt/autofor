@@ -37,31 +37,49 @@ class ForwardingActivity : Activity() {
         val keyguardManager = getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
         keyguardManager?.requestDismissKeyguard(this, null)
 
-        val enable = intent.getBooleanExtra(ScheduleManager.EXTRA_ENABLE_FORWARDING, false)
-        val phoneNumber = intent.getStringExtra(ScheduleManager.EXTRA_PHONE_NUMBER) ?: ""
-
         // Cancel any pending alarm heads-up notification
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.cancel(CallForwardingReceiver.NOTIFICATION_ID_URGENT)
 
-        executeCallForwarding(this, enable, phoneNumber)
-
-        // Reschedule next occurrences after triggering
-        ScheduleManager(this).rescheduleAll()
+        if (intent.action == ACTION_CHECK_STATUS) {
+            executeCheckStatus(this)
+        } else {
+            val enable = intent.getBooleanExtra(ScheduleManager.EXTRA_ENABLE_FORWARDING, false)
+            val phoneNumber = intent.getStringExtra(ScheduleManager.EXTRA_PHONE_NUMBER) ?: ""
+            executeCallForwarding(this, enable, phoneNumber)
+            // Reschedule next occurrences after triggering
+            ScheduleManager(this).rescheduleAll()
+        }
 
         finish()
     }
 
     companion object {
+        const val ACTION_CHECK_STATUS = "com.autofor.ACTION_CHECK_STATUS"
+
         fun executeCallForwarding(context: Context, enable: Boolean, phoneNumber: String): Boolean {
             val repository = RuleRepository(context)
 
+            // Standard 3GPP GSM code: **21* for registration & activation, ##21# for erasure & cancellation
             val mmiCode = if (enable) {
                 val cleanNumber = phoneNumber.replace(Regex("[^0-9+]"), "")
-                "*21*$cleanNumber#"
+                "**21*$cleanNumber#"
             } else {
-                "#21#"
+                "##21#"
             }
+
+            return dialMmiCode(context, mmiCode, repository, if (enable) "forwarding to $phoneNumber" else "forwarding cancellation")
+        }
+
+        fun executeCheckStatus(context: Context): Boolean {
+            val repository = RuleRepository(context)
+            val mmiCode = "*#21#"
+            return dialMmiCode(context, mmiCode, repository, "status check (*#21#)")
+        }
+
+        private fun dialMmiCode(context: Context, mmiCode: String, repository: RuleRepository, actionDescription: String): Boolean {
+            repository.setAwaitingMmi(true, mmiCode)
+            repository.setLastExecutionTime(System.currentTimeMillis())
 
             val encodedCode = Uri.encode(mmiCode)
             val callIntent = Intent(Intent.ACTION_CALL).apply {
@@ -71,20 +89,21 @@ class ForwardingActivity : Activity() {
 
             return try {
                 context.startActivity(callIntent)
-                val statusText = if (enable) {
-                    "Successfully initiated forwarding to $phoneNumber ($mmiCode)"
-                } else {
-                    "Successfully initiated forwarding cancellation ($mmiCode)"
-                }
+                val statusText = "Dialed $actionDescription ($mmiCode)"
                 repository.setLastForwardingStatus(statusText)
+                repository.setLastForwardingError(null)
                 true
             } catch (e: SecurityException) {
+                repository.setAwaitingMmi(false)
                 val errorText = "Permission CALL_PHONE missing. Failed to execute $mmiCode"
                 repository.setLastForwardingStatus(errorText)
+                repository.setLastForwardingError(errorText)
                 false
             } catch (e: Exception) {
+                repository.setAwaitingMmi(false)
                 val errorText = "Failed to execute $mmiCode: ${e.localizedMessage ?: e.javaClass.simpleName}"
                 repository.setLastForwardingStatus(errorText)
+                repository.setLastForwardingError(errorText)
                 false
             }
         }

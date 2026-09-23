@@ -72,4 +72,32 @@ class RuleRepository(context: Context) {
     fun setLastForwardingError(error: String?) {
         prefs.edit().putString("last_error", error).apply()
     }
+
+    fun setAwaitingMmi(awaiting: Boolean, code: String = "") {
+        prefs.edit()
+            .putBoolean("awaiting_mmi", awaiting)
+            .putString("awaiting_mmi_code", code)
+            .putLong("awaiting_mmi_time", if (awaiting) System.currentTimeMillis() else 0L)
+            .apply()
+    }
+
+    fun isAwaitingMmi(): Boolean {
+        val awaiting = prefs.getBoolean("awaiting_mmi", false)
+        if (!awaiting) return false
+        val time = prefs.getLong("awaiting_mmi_time", 0L)
+        // Auto-expire after 25 seconds if no dialog was detected
+        return (System.currentTimeMillis() - time) < 25000L
+    }
+
+    fun getAwaitingMmiCode(): String? {
+        return prefs.getString("awaiting_mmi_code", null)
+    }
+
+    fun getCarrierStatus(): String? {
+        return prefs.getString("carrier_status", null)
+    }
+
+    fun setCarrierStatus(status: String) {
+        prefs.edit().putString("carrier_status", status).apply()
+    }
 }

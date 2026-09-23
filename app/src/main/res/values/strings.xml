@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">AutoFor</string>
+    <string name="accessibility_service_description">AutoFor uses this service to automatically detect and dismiss carrier call forwarding confirmation dialogs and return to your home screen silently.</string>
 </resources>
