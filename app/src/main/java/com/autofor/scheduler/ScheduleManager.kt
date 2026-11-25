@@ -181,6 +181,12 @@ class ScheduleManager(private val context: Context) {
         }
     }
 
+    /** Cancels every alarm belonging to [ruleId]. Call before deleting the rule. */
+    fun cancelRule(ruleId: String) {
+        cancelRuleAlarms(ruleId)
+        cancelRetry(ruleId)
+    }
+
     private fun cancelRuleAlarms(ruleId: String) {
         cancelAlarm(ruleId + "_start")
         cancelAlarm(ruleId + "_end")

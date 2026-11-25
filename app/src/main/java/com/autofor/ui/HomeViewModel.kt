@@ -73,6 +73,9 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun deleteRule(ruleId: String) {
+        // Cancel first: once the rule is gone, rescheduleAll() only knows its ID if it was recorded
+        // as scheduled, which isn't the case right after upgrading from a build without that record.
+        scheduleManager.cancelRule(ruleId)
         repository.deleteRule(ruleId)
         scheduleManager.rescheduleAll()
         scheduleManager.checkAndSyncActiveState()
