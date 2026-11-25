@@ -94,12 +94,9 @@ class ForwardingActivity : Activity() {
 
             return try {
                 context.startActivity(callIntent)
-                // Remember what was applied so a missed change can be caught up after a reboot.
-                when {
-                    mmiCode == MmiCodes.CANCEL_UNCONDITIONAL -> repository.setAppliedForwardingNumber("")
-                    mmiCode.startsWith("**21*") -> repository.setAppliedForwardingNumber(mmiCode.removePrefix("**21*").removeSuffix("#"))
-                }
-                val statusText = "Dialed $actionDescription ($mmiCode)"
+                // The applied forwarding state is recorded by the accessibility service once the
+                // carrier replies; the dialer may still be waiting for Call to be pressed here.
+                val statusText = "Sent $actionDescription ($mmiCode), waiting for carrier reply"
                 repository.setLastForwardingStatus(statusText)
                 repository.setLastForwardingError(null)
                 true

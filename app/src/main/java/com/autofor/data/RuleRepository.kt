@@ -89,6 +89,11 @@ class RuleRepository(context: Context) {
         return (System.currentTimeMillis() - time) < 25000L
     }
 
+    /** When the current wait for an MMI reply started; identifies one request. */
+    fun getAwaitingMmiTime(): Long {
+        return prefs.getLong("awaiting_mmi_time", 0L)
+    }
+
     fun getAwaitingMmiCode(): String? {
         return prefs.getString("awaiting_mmi_code", null)
     }

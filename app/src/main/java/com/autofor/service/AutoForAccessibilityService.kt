@@ -53,6 +53,9 @@ class AutoForAccessibilityService : AccessibilityService() {
     private var repository: RuleRepository? = null
     private var pendingNavigationRunnable: Runnable? = null
 
+    /** Awaiting-MMI timestamp of the request whose dialer Call button was already pressed. */
+    private var callPressedForRequest: Long = 0L
+
     private fun getRepository(): RuleRepository {
         return repository ?: RuleRepository(this).also { repository = it }
     }
@@ -99,8 +102,27 @@ class AutoForAccessibilityService : AccessibilityService() {
             visitedNodes <= MAX_TRAVERSAL_NODES
         }
 
+        // Some dialers (e.g. Google Dialer) put a code from ACTION_CALL into the keypad instead of
+        // sending it. Press Call once for this request so scheduled changes don't stall there.
+        val pendingCode = repo.getAwaitingMmiCode()
+        val requestTime = repo.getAwaitingMmiTime()
+        if (callPressedForRequest != requestTime &&
+            MmiDialogDetector.isPendingCodeInDialer(allTexts, pendingCode)
+        ) {
+            if (findAndClickCallButton(rootNode)) {
+                callPressedForRequest = requestTime
+                Log.d(TAG, "Pressed dialer Call button for pending MMI code")
+            }
+            return
+        }
+
         if (!MmiDialogDetector.isMmiResultDialog(allTexts)) {
             return
+        }
+
+        // Record what the carrier confirmed, so a reboot catch-up compares against reality.
+        MmiDialogDetector.confirmedForwardingNumber(pendingCode, allTexts)?.let {
+            repo.setAppliedForwardingNumber(it)
         }
 
         val relevantText = allTexts
@@ -155,6 +177,52 @@ class AutoForAccessibilityService : AccessibilityService() {
         for (i in 0 until node.childCount) {
             extractAllTexts(node.getChild(i), results, depth + 1, canVisitNext)
         }
+    }
+
+    private fun findAndClickCallButton(rootNode: AccessibilityNodeInfo): Boolean {
+        val pkg = rootNode.packageName?.toString()
+        if (pkg != null) {
+            for (name in MmiDialogDetector.DIALER_CALL_BUTTON_ID_NAMES) {
+                for (node in rootNode.findAccessibilityNodeInfosByViewId("$pkg:id/$name")) {
+                    if (clickNodeOrParent(node)) return true
+                }
+            }
+        }
+        var visited = 0
+        return findLabelledCallButton(rootNode, depth = 0) {
+            visited++
+            visited <= MAX_TRAVERSAL_NODES
+        }
+    }
+
+    private fun findLabelledCallButton(
+        node: AccessibilityNodeInfo?,
+        depth: Int,
+        canVisitNext: () -> Boolean
+    ): Boolean {
+        if (node == null || depth > MAX_TRAVERSAL_DEPTH || !canVisitNext()) return false
+        if (MmiDialogDetector.isCallButtonLabel(node.contentDescription?.toString()) ||
+            MmiDialogDetector.isCallButtonLabel(node.text?.toString())
+        ) {
+            if (clickNodeOrParent(node)) return true
+        }
+        for (i in 0 until node.childCount) {
+            if (findLabelledCallButton(node.getChild(i), depth + 1, canVisitNext)) return true
+        }
+        return false
+    }
+
+    private fun clickNodeOrParent(node: AccessibilityNodeInfo): Boolean {
+        var current: AccessibilityNodeInfo? = node
+        var steps = 0
+        while (current != null && steps < 3) {
+            if (current.isEnabled && current.isClickable && current.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                return true
+            }
+            current = current.parent
+            steps++
+        }
+        return false
     }
 
     private fun findAndClickDismissButton(rootNode: AccessibilityNodeInfo): Boolean {

@@ -1,6 +1,8 @@
 package com.autofor.service
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -83,5 +85,36 @@ class MmiDialogDetectorTest {
         assertFalse(MmiDialogDetector.isSafeDismissButtonLabel("Forward Now"))
         assertFalse(MmiDialogDetector.isSafeDismissButtonLabel(null))
         assertFalse(MmiDialogDetector.isSafeDismissButtonLabel(""))
+    }
+
+    @Test
+    fun isPendingCodeInDialer_matchesOnlyTheExactPendingCode() {
+        // Text seen on Google Dialer's keypad when it holds the code instead of sending it.
+        val keypad = listOf("Create new contact", "Add to a contact", "**21*01024528918#", "1", "2", "ABC")
+        assertTrue(MmiDialogDetector.isPendingCodeInDialer(keypad, "**21*01024528918#"))
+        assertTrue(MmiDialogDetector.isPendingCodeInDialer(listOf("*#21#"), "*#21#"))
+        assertFalse(MmiDialogDetector.isPendingCodeInDialer(keypad, "**21*01004065404#"))
+        assertFalse(MmiDialogDetector.isPendingCodeInDialer(keypad, "##21#"))
+        assertFalse(MmiDialogDetector.isPendingCodeInDialer(keypad, null))
+        // A longer message that merely mentions the code is not the keypad.
+        assertFalse(MmiDialogDetector.isPendingCodeInDialer(listOf("Dialed forwarding to 01024528918 (**21*01024528918#)"), "**21*01024528918#"))
+    }
+
+    @Test
+    fun isCallButtonLabel_matchesExactLabelsOnly() {
+        assertTrue(MmiDialogDetector.isCallButtonLabel("Call"))
+        assertTrue(MmiDialogDetector.isCallButtonLabel(" dial "))
+        assertFalse(MmiDialogDetector.isCallButtonLabel("Call history"))
+        assertFalse(MmiDialogDetector.isCallButtonLabel(null))
+    }
+
+    @Test
+    fun confirmedForwardingNumber_readsActivationCancellationAndFailure() {
+        val ok = listOf("Vodafone Message. Call forwarding", "Voice: +201024528918")
+        assertEquals("01024528918", MmiDialogDetector.confirmedForwardingNumber("**21*01024528918#", ok))
+        assertEquals("", MmiDialogDetector.confirmedForwardingNumber("##21#", listOf("Erasure was successful")))
+        assertNull(MmiDialogDetector.confirmedForwardingNumber("*#21#", ok))
+        assertNull(MmiDialogDetector.confirmedForwardingNumber("**21*01024528918#", listOf("Connection problem or invalid MMI code.")))
+        assertNull(MmiDialogDetector.confirmedForwardingNumber(null, ok))
     }
 }
