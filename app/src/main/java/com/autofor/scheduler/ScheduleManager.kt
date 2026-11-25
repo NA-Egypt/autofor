@@ -19,18 +19,59 @@ class ScheduleManager(private val context: Context) {
         const val EXTRA_RULE_ID = "extra_rule_id"
         const val EXTRA_PHONE_NUMBER = "extra_phone_number"
         const val EXTRA_IS_RETRY = "extra_is_retry"
+        const val EXTRA_TRIGGER_AT = "extra_trigger_at"
+
+        /** Pseudo rule ID for the one-off alarm that catches up on changes missed while the phone was off. */
+        const val CATCH_UP_ID = "catch_up"
     }
 
     fun rescheduleAll() {
-        cancelAllAlarms()
-
-        if (!repository.isGlobalEnabled()) return
-
         val rules = repository.getRules()
+        val globalEnabled = repository.isGlobalEnabled()
+
+        // Include IDs of rules that have since been deleted, so their alarms don't keep firing.
+        val knownIds = repository.getScheduledRuleIds() + rules.map { it.id }
+        val liveIds = if (globalEnabled) rules.filter { it.isEnabled }.map { it.id }.toSet() else emptySet()
+
+        for (id in knownIds) {
+            cancelRuleAlarms(id)
+            // Keep a pending retry only while its rule still exists and is enabled.
+            if (id !in liveIds) cancelRetry(id)
+        }
+        if (!globalEnabled) cancelRetry(CATCH_UP_ID)
+
+        repository.setScheduledRuleIds(liveIds)
+        if (!globalEnabled) return
+
         for (rule in rules) {
             if (!rule.isEnabled) continue
             scheduleRule(rule)
         }
+    }
+
+    /**
+     * The cleaned number calls should be forwarded to right now, or "" when forwarding should be off.
+     */
+    fun desiredForwardingNumber(nowMillis: Long = System.currentTimeMillis()): String {
+        if (!repository.isGlobalEnabled()) return ""
+        val rule = ScheduleCalculator.getEffectiveRule(repository.getRules(), nowMillis) ?: return ""
+        return MmiCodes.cleanNumber(rule.targetPhoneNumber)
+    }
+
+    /**
+     * After the phone was off, a window may have opened or closed without its alarm firing.
+     * If what should be applied now differs from what AutoFor last dialed, schedule a one-off
+     * trigger shortly after boot (giving the accessibility service time to connect).
+     */
+    fun scheduleCatchUpIfNeeded(delayMinutes: Long = 1): Boolean {
+        if (!repository.isGlobalEnabled()) return false
+        val desired = desiredForwardingNumber()
+        val applied = repository.getAppliedForwardingNumber()
+        // Never dialed and nothing should be forwarded: leave the carrier state alone.
+        if (applied == null && desired.isEmpty()) return false
+        if (applied == desired) return false
+        scheduleRetry(desired.isNotEmpty(), CATCH_UP_ID, desired, delayMinutes, isRetry = false)
+        return true
     }
 
     /**
@@ -39,12 +80,10 @@ class ScheduleManager(private val context: Context) {
     fun checkAndSyncActiveState() {
         if (!repository.isGlobalEnabled()) return
 
-        val rules = repository.getRules()
-        val activeRules = ScheduleCalculator.getCurrentlyActiveRules(rules)
+        val activeRule = ScheduleCalculator.getEffectiveRule(repository.getRules())
 
-        if (activeRules.isNotEmpty()) {
-            val activeRule = activeRules.first()
-            val mmiCode = "*21*${activeRule.targetPhoneNumber.replace(Regex("[^0-9+]"), "")}#"
+        if (activeRule != null) {
+            val mmiCode = MmiCodes.enableUnconditional(activeRule.targetPhoneNumber)
             val statusText = "Active: Scheduled forwarding to ${activeRule.targetPhoneNumber} ($mmiCode)"
             repository.setLastForwardingStatus(statusText)
         }
@@ -53,8 +92,8 @@ class ScheduleManager(private val context: Context) {
 
     @SuppressLint("ScheduleExactAlarm")
     fun scheduleRule(rule: com.autofor.data.ForwardingRule) {
-        val nextStart = ScheduleCalculator.calculateNextTriggerMillis(rule, rule.startHour, rule.startMinute)
-        val nextEnd = ScheduleCalculator.calculateNextTriggerMillis(rule, rule.endHour, rule.endMinute)
+        val nextStart = ScheduleCalculator.calculateNextStartMillis(rule)
+        val nextEnd = ScheduleCalculator.calculateNextEndMillis(rule)
 
         if (nextStart != null) {
             val startIntent = Intent(context, CallForwardingReceiver::class.java).apply {
@@ -62,6 +101,7 @@ class ScheduleManager(private val context: Context) {
                 putExtra(EXTRA_ENABLE_FORWARDING, true)
                 putExtra(EXTRA_RULE_ID, rule.id)
                 putExtra(EXTRA_PHONE_NUMBER, rule.targetPhoneNumber)
+                putExtra(EXTRA_TRIGGER_AT, nextStart)
             }
             val pendingStart = PendingIntent.getBroadcast(
                 context,
@@ -78,6 +118,7 @@ class ScheduleManager(private val context: Context) {
                 putExtra(EXTRA_ENABLE_FORWARDING, false)
                 putExtra(EXTRA_RULE_ID, rule.id)
                 putExtra(EXTRA_PHONE_NUMBER, rule.targetPhoneNumber)
+                putExtra(EXTRA_TRIGGER_AT, nextEnd)
             }
             val pendingEnd = PendingIntent.getBroadcast(
                 context,
@@ -89,14 +130,21 @@ class ScheduleManager(private val context: Context) {
         }
     }
 
-    fun scheduleRetry(enable: Boolean, ruleId: String, phoneNumber: String, delayMinutes: Long = 2) {
+    fun scheduleRetry(
+        enable: Boolean,
+        ruleId: String,
+        phoneNumber: String,
+        delayMinutes: Long = 2,
+        isRetry: Boolean = true
+    ) {
         val triggerAtMillis = System.currentTimeMillis() + (delayMinutes * 60 * 1000L)
         val retryIntent = Intent(context, CallForwardingReceiver::class.java).apply {
             action = ACTION_TRIGGER_FORWARDING
             putExtra(EXTRA_ENABLE_FORWARDING, enable)
             putExtra(EXTRA_RULE_ID, ruleId)
             putExtra(EXTRA_PHONE_NUMBER, phoneNumber)
-            putExtra(EXTRA_IS_RETRY, true)
+            putExtra(EXTRA_IS_RETRY, isRetry)
+            putExtra(EXTRA_TRIGGER_AT, triggerAtMillis)
         }
         val pendingRetry = PendingIntent.getBroadcast(
             context,
@@ -133,30 +181,29 @@ class ScheduleManager(private val context: Context) {
         }
     }
 
-    fun cancelAllAlarms() {
-        val rules = repository.getRules()
-        for (rule in rules) {
-            val startIntent = Intent(context, CallForwardingReceiver::class.java).apply {
-                action = ACTION_TRIGGER_FORWARDING
-            }
-            val pendingStart = PendingIntent.getBroadcast(
-                context,
-                (rule.id + "_start").hashCode(),
-                startIntent,
-                PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
-            )
-            pendingStart?.let { alarmManager.cancel(it) }
+    private fun cancelRuleAlarms(ruleId: String) {
+        cancelAlarm(ruleId + "_start")
+        cancelAlarm(ruleId + "_end")
+    }
 
-            val endIntent = Intent(context, CallForwardingReceiver::class.java).apply {
-                action = ACTION_TRIGGER_FORWARDING
-            }
-            val pendingEnd = PendingIntent.getBroadcast(
-                context,
-                (rule.id + "_end").hashCode(),
-                endIntent,
-                PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
-            )
-            pendingEnd?.let { alarmManager.cancel(it) }
+    fun cancelRetry(ruleId: String) {
+        cancelAlarm(ruleId + "_retry")
+    }
+
+    private fun cancelAlarm(requestKey: String) {
+        // PendingIntent matching ignores extras, so action + component + request code is enough.
+        val intent = Intent(context, CallForwardingReceiver::class.java).apply {
+            action = ACTION_TRIGGER_FORWARDING
+        }
+        val pending = PendingIntent.getBroadcast(
+            context,
+            requestKey.hashCode(),
+            intent,
+            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+        )
+        pending?.let {
+            alarmManager.cancel(it)
+            it.cancel()
         }
     }
 }

@@ -10,6 +10,8 @@ class BootCompletedReceiver : BroadcastReceiver() {
             val scheduleManager = ScheduleManager(context)
             scheduleManager.rescheduleAll()
             scheduleManager.checkAndSyncActiveState()
+            // Apply any window start/end that was missed while the phone was off.
+            scheduleManager.scheduleCatchUpIfNeeded()
         }
 
     }
