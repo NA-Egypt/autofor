@@ -39,20 +39,17 @@ class ForwardingActivity : Activity() {
         keyguardManager?.requestDismissKeyguard(this, null)
 
         val wasLocked = intent.getBooleanExtra(com.autofor.service.AutoForAccessibilityService.EXTRA_WAS_LOCKED, false)
-        if (wasLocked) {
-            com.autofor.service.AutoForAccessibilityService.lastWasLocked = true
-        }
 
         // Cancel any pending alarm heads-up notification
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.cancel(CallForwardingReceiver.NOTIFICATION_ID_URGENT)
 
         if (intent.action == ACTION_CHECK_STATUS) {
-            executeCheckStatus(this)
+            executeCheckStatus(this, wasLocked)
         } else {
             val enable = intent.getBooleanExtra(ScheduleManager.EXTRA_ENABLE_FORWARDING, false)
             val phoneNumber = intent.getStringExtra(ScheduleManager.EXTRA_PHONE_NUMBER) ?: ""
-            executeCallForwarding(this, enable, phoneNumber)
+            executeCallForwarding(this, enable, phoneNumber, wasLocked)
             // Reschedule next occurrences after triggering
             ScheduleManager(this).rescheduleAll()
         }
@@ -63,23 +60,25 @@ class ForwardingActivity : Activity() {
     companion object {
         const val ACTION_CHECK_STATUS = "com.autofor.ACTION_CHECK_STATUS"
 
-        fun executeCallForwarding(context: Context, enable: Boolean, phoneNumber: String): Boolean {
+        fun executeCallForwarding(
+            context: Context,
+            enable: Boolean,
+            phoneNumber: String,
+            wasLocked: Boolean = false
+        ): Boolean {
+            com.autofor.service.AutoForAccessibilityService.lastWasLocked = wasLocked
             val repository = RuleRepository(context)
 
             // Standard 3GPP GSM code: **21* for registration & activation, ##21# for erasure & cancellation
-            val mmiCode = if (enable) {
-                val cleanNumber = phoneNumber.replace(Regex("[^0-9+]"), "")
-                "**21*$cleanNumber#"
-            } else {
-                "##21#"
-            }
+            val mmiCode = MmiCodes.forState(enable, phoneNumber)
 
             return dialMmiCode(context, mmiCode, repository, if (enable) "forwarding to $phoneNumber" else "forwarding cancellation")
         }
 
-        fun executeCheckStatus(context: Context): Boolean {
+        fun executeCheckStatus(context: Context, wasLocked: Boolean = false): Boolean {
+            com.autofor.service.AutoForAccessibilityService.lastWasLocked = wasLocked
             val repository = RuleRepository(context)
-            val mmiCode = "*#21#"
+            val mmiCode = MmiCodes.QUERY_UNCONDITIONAL
             return dialMmiCode(context, mmiCode, repository, "status check (*#21#)")
         }
 
@@ -95,6 +94,11 @@ class ForwardingActivity : Activity() {
 
             return try {
                 context.startActivity(callIntent)
+                // Remember what was applied so a missed change can be caught up after a reboot.
+                when {
+                    mmiCode == MmiCodes.CANCEL_UNCONDITIONAL -> repository.setAppliedForwardingNumber("")
+                    mmiCode.startsWith("**21*") -> repository.setAppliedForwardingNumber(mmiCode.removePrefix("**21*").removeSuffix("#"))
+                }
                 val statusText = "Dialed $actionDescription ($mmiCode)"
                 repository.setLastForwardingStatus(statusText)
                 repository.setLastForwardingError(null)

@@ -100,4 +100,25 @@ class RuleRepository(context: Context) {
     fun setCarrierStatus(status: String) {
         prefs.edit().putString("carrier_status", status).apply()
     }
+
+    /**
+     * The number AutoFor last dialed forwarding to: a cleaned number when forwarding was turned on,
+     * "" when it was turned off, null when AutoFor has never dialed either.
+     */
+    fun getAppliedForwardingNumber(): String? {
+        return prefs.getString("applied_forwarding_number", null)
+    }
+
+    fun setAppliedForwardingNumber(number: String) {
+        prefs.edit().putString("applied_forwarding_number", number).apply()
+    }
+
+    /** IDs of rules that may still have alarms registered, so they can be cancelled after the rule is deleted. */
+    fun getScheduledRuleIds(): Set<String> {
+        return prefs.getStringSet("scheduled_rule_ids", emptySet())?.toSet() ?: emptySet()
+    }
+
+    fun setScheduledRuleIds(ids: Set<String>) {
+        prefs.edit().putStringSet("scheduled_rule_ids", ids).apply()
+    }
 }

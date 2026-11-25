@@ -59,10 +59,21 @@ class CallForwardingReceiver : BroadcastReceiver() {
         val isRetry = intent.getBooleanExtra(ScheduleManager.EXTRA_IS_RETRY, false)
 
         try {
-            val enable = intent.getBooleanExtra(ScheduleManager.EXTRA_ENABLE_FORWARDING, false)
-            val phoneNumber = intent.getStringExtra(ScheduleManager.EXTRA_PHONE_NUMBER) ?: ""
             val ruleId = intent.getStringExtra(ScheduleManager.EXTRA_RULE_ID) ?: ""
             val repository = RuleRepository(context)
+
+            // Stale alarm (e.g. a retry) firing after the user switched AutoFor off.
+            if (!repository.isGlobalEnabled()) return
+
+            // The alarm says which rule edge fired, but the carrier only holds one forwarding target.
+            // Work out what should be applied now from every rule, so a rule ending while another
+            // is still active switches to that rule's number instead of cancelling forwarding.
+            // Evaluate no earlier than the scheduled time, in case the alarm fires a little early.
+            val triggerAt = intent.getLongExtra(ScheduleManager.EXTRA_TRIGGER_AT, 0L)
+            val evaluateAt = maxOf(System.currentTimeMillis(), triggerAt)
+            val targetRule = ScheduleCalculator.getEffectiveRule(repository.getRules(), evaluateAt)
+            val enable = targetRule != null
+            val phoneNumber = targetRule?.targetPhoneNumber ?: ""
 
             val keyguardManager = context.getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
             val isLocked = keyguardManager?.isKeyguardLocked ?: false
@@ -83,8 +94,7 @@ class CallForwardingReceiver : BroadcastReceiver() {
                 return
             }
 
-            val cleanNumber = phoneNumber.replace(Regex("[^0-9+]"), "")
-            val mmiCode = if (enable) "**21*$cleanNumber#" else "##21#"
+            val mmiCode = MmiCodes.forState(enable, phoneNumber)
             val actionLabel = if (enable) "Forwarding to $phoneNumber" else "Forwarding Cancellation"
 
             // Step 2: Attempt execution
