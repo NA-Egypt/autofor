@@ -17,10 +17,13 @@ class AutoForAccessibilityService : AccessibilityService() {
     companion object {
         private const val TAG = "AutoForAccessibility"
         const val EXTRA_WAS_LOCKED = "extra_was_locked"
+        private const val MAX_TRAVERSAL_DEPTH = 15
+        private const val MAX_TRAVERSAL_NODES = 200
 
         var instance: AutoForAccessibilityService? = null
             private set
 
+        @Volatile
         var isServiceRunning: Boolean = false
             private set
 
@@ -44,33 +47,21 @@ class AutoForAccessibilityService : AccessibilityService() {
                 context.startActivity(activityIntent)
             }
         }
-
-        private val MMI_KEYWORDS = listOf(
-            "call forwarding",
-            "forwarding",
-            "registration was successful",
-            "deactivation was successful",
-            "erasure was successful",
-            "service was enabled",
-            "service has been disabled",
-            "service has been enabled",
-            "mmi",
-            "ussd",
-            "unconditional",
-            "carrier",
-            "voice:",
-            "data:",
-            "fax:",
-            "not forwarded"
-        )
     }
 
     private val handler = Handler(Looper.getMainLooper())
+    private var repository: RuleRepository? = null
+    private var pendingNavigationRunnable: Runnable? = null
+
+    private fun getRepository(): RuleRepository {
+        return repository ?: RuleRepository(this).also { repository = it }
+    }
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
         isServiceRunning = true
+        repository = RuleRepository(this)
         Log.d(TAG, "AutoForAccessibilityService connected and ready")
     }
 
@@ -84,52 +75,74 @@ class AutoForAccessibilityService : AccessibilityService() {
             return
         }
 
+        // Fast-path: never inspect UI or touch anything unless AutoFor is actively awaiting an MMI result.
+        val repo = getRepository()
+        if (!repo.isAwaitingMmi()) {
+            return
+        }
+
+        val eventPkg = event.packageName?.toString()
+        if (eventPkg != null && MmiDialogDetector.shouldIgnorePackage(eventPkg, eventPkg, packageName)) {
+            return
+        }
+
         val rootNode = rootInActiveWindow ?: return
-        val repository = RuleRepository(this)
-        val isAwaiting = repository.isAwaitingMmi()
+        val rootPkg = rootNode.packageName?.toString()
+        if (MmiDialogDetector.shouldIgnorePackage(eventPkg, rootPkg, packageName)) {
+            return
+        }
 
-        // Check if current window or node tree contains carrier / MMI response content
         val allTexts = mutableListOf<String>()
-        extractAllTexts(rootNode, allTexts)
+        var visitedNodes = 0
+        extractAllTexts(rootNode, allTexts, depth = 0) {
+            visitedNodes++
+            visitedNodes <= MAX_TRAVERSAL_NODES
+        }
 
-        val fullText = allTexts.joinToString(" ")
-        val lowerText = fullText.lowercase(Locale.ROOT)
+        if (!MmiDialogDetector.isMmiResultDialog(allTexts)) {
+            return
+        }
 
-        val containsMmiKeyword = MMI_KEYWORDS.any { keyword -> lowerText.contains(keyword) }
+        val relevantText = allTexts
+            .filter { it.isNotBlank() && it.length > 2 }
+            .distinct()
+            .joinToString(". ")
 
-        if (isAwaiting || containsMmiKeyword) {
-            val relevantText = allTexts
-                .filter { it.isNotBlank() && it.length > 2 }
-                .distinct()
-                .joinToString(". ")
+        if (relevantText.isNotBlank()) {
+            val statusText = if (relevantText.length > 120) relevantText.take(120) + "..." else relevantText
+            repo.setLastForwardingStatus("Carrier: $statusText")
+            repo.setCarrierStatus(statusText)
+            repo.setLastExecutionTime(System.currentTimeMillis())
+        }
 
-            if (relevantText.isNotBlank()) {
-                val statusText = if (relevantText.length > 120) relevantText.take(120) + "..." else relevantText
-                repository.setLastForwardingStatus("Carrier: $statusText")
-                repository.setCarrierStatus(statusText)
-                repository.setLastExecutionTime(System.currentTimeMillis())
-            }
+        // Clear awaiting state before clicking/navigating so follow-up events are immediately ignored.
+        repo.setAwaitingMmi(false)
 
-            // Attempt to locate and click the dismissal button (OK / Dismiss)
-            val clicked = findAndClickPositiveButton(rootNode)
-            if (clicked || containsMmiKeyword) {
-                repository.setAwaitingMmi(false)
+        findAndClickDismissButton(rootNode)
 
-                // Return to home or re-lock screen after brief delay to allow system click to process
-                handler.postDelayed({
-                    if (lastWasLocked && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                        performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN)
-                    } else {
-                        performGlobalAction(GLOBAL_ACTION_HOME)
-                    }
-                    lastWasLocked = false
-                }, 500L)
+        pendingNavigationRunnable?.let { handler.removeCallbacks(it) }
+        val navRunnable = Runnable {
+            pendingNavigationRunnable = null
+            val shouldLock = lastWasLocked
+            lastWasLocked = false
+            if (shouldLock && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN)
+            } else {
+                performGlobalAction(GLOBAL_ACTION_HOME)
             }
         }
+        pendingNavigationRunnable = navRunnable
+        handler.postDelayed(navRunnable, 500L)
     }
 
-    private fun extractAllTexts(node: AccessibilityNodeInfo?, results: MutableList<String>) {
-        if (node == null) return
+    private fun extractAllTexts(
+        node: AccessibilityNodeInfo?,
+        results: MutableList<String>,
+        depth: Int,
+        canVisitNext: () -> Boolean
+    ) {
+        if (node == null || depth > MAX_TRAVERSAL_DEPTH || !canVisitNext()) return
+
         val text = node.text?.toString()?.trim()
         if (!text.isNullOrEmpty()) {
             results.add(text)
@@ -140,53 +153,59 @@ class AutoForAccessibilityService : AccessibilityService() {
         }
 
         for (i in 0 until node.childCount) {
-            extractAllTexts(node.getChild(i), results)
+            extractAllTexts(node.getChild(i), results, depth + 1, canVisitNext)
         }
     }
 
-    private fun findAndClickPositiveButton(rootNode: AccessibilityNodeInfo): Boolean {
-        // 1. Try finding standard dialog button IDs
+    private fun findAndClickDismissButton(rootNode: AccessibilityNodeInfo): Boolean {
+        // 1. Try finding standard dialog positive/dismiss button IDs
         val standardIds = listOf("android:id/button1", "button1", "ok_button", "dismiss_button")
         for (id in standardIds) {
             val nodes = rootNode.findAccessibilityNodeInfosByViewId(id)
             for (node in nodes) {
+                val label = node.text?.toString()?.trim()?.lowercase(Locale.ROOT)
+                if (label == "cancel" || label == "abort") continue
                 if (node.isClickable && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
                     return true
                 }
             }
         }
 
-        // 2. Try finding button by text ("OK", "Dismiss", "Close", "Done", "Accept")
-        val buttonTexts = listOf("OK", "Ok", "ok", "Dismiss", "Close", "Done", "Accept")
-        for (btnText in buttonTexts) {
-            val nodes = rootNode.findAccessibilityNodeInfosByText(btnText)
-            for (node in nodes) {
-                if (node.isClickable) {
-                    if (node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return true
-                } else {
-                    // Check if parent is clickable
-                    var parent = node.parent
-                    while (parent != null) {
-                        if (parent.isClickable && parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
-                            return true
-                        }
-                        parent = parent.parent
-                    }
+        // 2. Walk the tree for an exact dismissal button label ("OK", "Dismiss", "Close", "Done", etc.)
+        var visited = 0
+        return findExactLabelButton(rootNode, depth = 0) {
+            visited++
+            visited <= MAX_TRAVERSAL_NODES
+        }
+    }
+
+    private fun findExactLabelButton(
+        node: AccessibilityNodeInfo?,
+        depth: Int,
+        canVisitNext: () -> Boolean
+    ): Boolean {
+        if (node == null || depth > MAX_TRAVERSAL_DEPTH || !canVisitNext()) return false
+
+        val label = node.text?.toString() ?: node.contentDescription?.toString()
+        if (MmiDialogDetector.isSafeDismissButtonLabel(label)) {
+            if (node.isClickable && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                return true
+            }
+            var parent = node.parent
+            var parentSteps = 0
+            while (parent != null && parentSteps < 4) {
+                if (parent.isClickable && parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                    return true
                 }
+                parent = parent.parent
+                parentSteps++
             }
         }
 
-        // 3. Fallback: Search for any clickable Button node in dialog
-        return findFirstClickableButton(rootNode)
-    }
-
-    private fun findFirstClickableButton(node: AccessibilityNodeInfo?): Boolean {
-        if (node == null) return false
-        if (node.className?.toString()?.contains("Button", ignoreCase = true) == true && node.isClickable) {
-            return node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-        }
         for (i in 0 until node.childCount) {
-            if (findFirstClickableButton(node.getChild(i))) return true
+            if (findExactLabelButton(node.getChild(i), depth + 1, canVisitNext)) {
+                return true
+            }
         }
         return false
     }
@@ -197,6 +216,9 @@ class AutoForAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        pendingNavigationRunnable?.let { handler.removeCallbacks(it) }
+        pendingNavigationRunnable = null
+        handler.removeCallbacksAndMessages(null)
         if (instance == this) instance = null
         isServiceRunning = false
         Log.d(TAG, "AutoForAccessibilityService destroyed")
